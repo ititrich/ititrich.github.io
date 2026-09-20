@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 자소서 첨삭 리포트</title>
+<meta name="description" content="IT 취준생이 자소서를 붙여넣으면 10분 안에 직무 맞춤 첨삭본을 받습니다." />
+<style>
+  /* ===== 디자인 토큰 ===== */
+  :root{
+    --point: #2F6BFF;        /* 포인트 컬러 1개 */
+    --point-dark: #1F4FD8;
+    --point-soft: #EEF3FF;
+    --text: #17191C;
+    --text-sub: #5B6270;
+    --line: #E8EAEF;
+    --bg: #FFFFFF;
+    --bg-soft: #F7F8FA;
+    --radius: 16px;
+    --radius-lg: 22px;
+    --shadow: 0 2px 10px rgba(23,25,28,.06);
+    --maxw: 560px;
+  }
+
+  *{ box-sizing: border-box; }
+  html{ -webkit-text-size-adjust: 100%; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+                 "Pretendard", "Noto Sans KR", "맑은 고딕", "Malgun Gothic", sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    letter-spacing: -0.01em;
+    word-break: keep-all;      /* 한글 줄바꿈 가독성 */
+    overflow-wrap: break-word;
+  }
+  img{ max-width:100%; display:block; }
+  button{ font-family: inherit; }
+
+  .wrap{
+    width: 100%;
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  section{ padding: 56px 0; }
+  .soft{ background: var(--bg-soft); }
+
+  h1,h2,h3{ margin:0; line-height:1.4; letter-spacing:-0.02em; }
+  h1{ font-size: 28px; font-weight: 800; }
+  h2{ font-size: 22px; font-weight: 800; }
+  h3{ font-size: 17px; font-weight: 700; }
+  p{ margin: 0; }
+
+  .eyebrow{
+    display:inline-block;
+    background: var(--point-soft);
+    color: var(--point-dark);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 999px;
+    margin-bottom: 16px;
+  }
+  .sub{ color: var(--text-sub); font-size: 15px; }
+  .mt8{ margin-top:8px; }
+  .mt12{ margin-top:12px; }
+  .mt16{ margin-top:16px; }
+  .mt24{ margin-top:24px; }
+  .mt32{ margin-top:32px; }
+  .center{ text-align:center; }
+
+  /* ===== 버튼 ===== */
+  .btn{
+    display:block;
+    width:100%;
+    border:0;
+    cursor:pointer;
+    background: var(--point);
+    color:#fff;
+    font-size: 17px;
+    font-weight: 800;
+    padding: 18px 20px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    transition: transform .12s ease, background .12s ease;
+  }
+  .btn:hover{ background: var(--point-dark); }
+  .btn:active{ transform: translateY(1px); }
+  .btn-lg{ font-size: 18px; padding: 20px; }
+  .btn-ghost{
+    background:#fff;
+    color: var(--point-dark);
+    border: 1.5px solid var(--point);
+    box-shadow:none;
+  }
+  .btn-ghost:hover{ background: var(--point-soft); }
+  .btn-note{
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-sub);
+    text-align:center;
+  }
+
+  /* ===== 히어로 ===== */
+  .hero{ padding: 48px 0 44px; }
+  .hero h1 span{ color: var(--point); }
+  .hero-points{
+    list-style:none; padding:0; margin: 20px 0 0;
+    display:flex; flex-wrap:wrap; gap:8px;
+  }
+  .hero-points li{
+    font-size: 13px; font-weight:600; color: var(--text-sub);
+    background:#fff; border:1px solid var(--line);
+    padding: 7px 12px; border-radius: 999px;
+  }
+
+  /* ===== 카드 ===== */
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .card + .card{ margin-top: 12px; }
+  .card .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; border-radius:50%;
+    background: var(--point-soft); color: var(--point-dark);
+    font-size:13px; font-weight:800; margin-bottom:10px;
+  }
+
+  /* ===== 무료 체험 ===== */
+  textarea{
+    width:100%;
+    min-height: 160px;
+    padding: 16px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text);
+    resize: vertical;
+    background:#fff;
+  }
+  textarea:focus{ outline:none; border-color: var(--point); }
+  .counter{ font-size:13px; color: var(--text-sub); text-align:right; margin-top:6px; }
+  .result{
+    margin-top: 14px;
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    font-size: 15px;
+    color: var(--text-sub);
+    background: #fff;
+    min-height: 64px;
+    white-space: pre-wrap;   /* 줄바꿈 그대로 보이게 */
+  }
+  /* 안내 / 오류 메시지 */
+  .result.warn{
+    border-style: solid;
+    border-color: var(--point);
+    background: var(--point-soft);
+    color: var(--point-dark);
+    font-weight: 700;
+  }
+  /* 실제 진단 결과 */
+  .result.done{
+    border-style: solid;
+    border-color: var(--point);
+    background: #fff;
+    color: var(--text);
+    line-height: 1.75;
+  }
+  .btn:disabled{
+    opacity: .55;
+    cursor: default;
+  }
+
+  /* ===== 결과 샘플 ===== */
+  .preview{
+    background:#fff; border:1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow:hidden;
+  }
+  .preview-head{
+    background: var(--point); color:#fff;
+    padding: 14px 18px; font-size:14px; font-weight:800;
+  }
+  .preview-body{ padding: 18px; }
+  .diff{ border-left: 3px solid var(--line); padding-left: 12px; }
+  .diff + .diff{ margin-top: 14px; }
+  .diff .tag{ font-size:12px; font-weight:800; color: var(--text-sub); }
+  .diff.after{ border-left-color: var(--point); }
+  .diff.after .tag{ color: var(--point-dark); }
+  .diff p{ font-size:14px; margin-top:4px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip{
+    font-size:12px; font-weight:700;
+    background: var(--point-soft); color: var(--point-dark);
+    padding: 5px 10px; border-radius: 999px;
+  }
+  .qlist{ margin:8px 0 0; padding-left: 18px; font-size:14px; color: var(--text-sub); }
+  .qlist li{ margin-top:4px; }
+  .blur{ filter: blur(3.5px); user-select:none; }
+  .lock{
+    text-align:center; font-size:13px; font-weight:700;
+    color: var(--text-sub); padding: 14px 0 2px;
+  }
+
+  /* ===== 가격 ===== */
+  .price-box{
+    background:#fff; border:2px solid var(--point);
+    border-radius: var(--radius-lg); padding: 26px 20px;
+    box-shadow: var(--shadow); text-align:center;
+  }
+  .price{ font-size: 40px; font-weight: 900; letter-spacing:-0.03em; }
+  .price small{ font-size: 16px; font-weight:700; color: var(--text-sub); }
+  .incl{ list-style:none; margin: 22px 0 0; padding:0; text-align:left; }
+  .incl li{
+    display:flex; gap:10px; align-items:flex-start;
+    font-size:15px; font-weight:600;
+    padding: 12px 0; border-top: 1px solid var(--line);
+  }
+  .incl li:last-child{ border-bottom: 1px solid var(--line); }
+  .check{ color: var(--point); font-weight:900; flex:0 0 auto; }
+  .incl span.desc{ display:block; font-size:13px; font-weight:400; color: var(--text-sub); }
+
+  /* ===== 만든 사람 ===== */
+  .author{ display:flex; gap:14px; align-items:center; }
+  .avatar{
+    flex:0 0 auto; width:56px; height:56px; border-radius:50%;
+    background: var(--point-soft); color: var(--point-dark);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; font-weight:900;
+  }
+  .career{ list-style:none; margin:18px 0 0; padding:0; }
+  .career li{
+    font-size:15px; padding:10px 0; border-top:1px solid var(--line);
+    display:flex; gap:10px;
+  }
+  .career li:before{ content:"—"; color: var(--point); font-weight:800; }
+
+  /* ===== FAQ ===== */
+  details{
+    border-bottom: 1px solid var(--line);
+    padding: 4px 0;
+  }
+  details summary{
+    list-style:none; cursor:pointer;
+    font-size:16px; font-weight:700;
+    padding: 16px 32px 16px 0;
+    position:relative;
+  }
+  details summary::-webkit-details-marker{ display:none; }
+  details summary:after{
+    content:"+";
+    position:absolute; right:4px; top:50%; transform: translateY(-50%);
+    font-size:20px; font-weight:700; color: var(--point);
+  }
+  details[open] summary:after{ content:"−"; }
+  details .answer{
+    font-size:15px; color: var(--text-sub);
+    padding: 0 4px 18px 0;
+  }
+
+  /* ===== 푸터 ===== */
+  footer{
+    border-top:1px solid var(--line);
+    padding: 28px 0 40px;
+    font-size:13px; color: var(--text-sub);
+  }
+  footer dl{ margin:0; }
+  footer .row{ display:flex; gap:8px; padding: 3px 0; }
+  footer dt{ flex:0 0 96px; color:#9AA0AC; }
+  footer dd{ margin:0; }
+  .copyright{ margin-top:18px; color:#9AA0AC; }
+
+  /* ===== 토스트 ===== */
+  #toast{
+    position: fixed; left:50%; bottom: 28px;
+    transform: translate(-50%, 20px);
+    background: var(--text); color:#fff;
+    font-size:14px; font-weight:700;
+    padding: 13px 20px; border-radius: 999px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    opacity:0; pointer-events:none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 50;
+  }
+  #toast.on{ opacity:1; transform: translate(-50%, 0); }
+
+  @media (min-width: 600px){
+    h1{ font-size: 34px; }
+    h2{ font-size: 25px; }
+    section{ padding: 72px 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 1. 히어로 -->
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">IT 취준생 전용</span>
+    <h1>자소서 붙여넣으면<br /><span>10분 안에</span> 직무 맞춤<br />첨삭본이 옵니다</h1>
+    <p class="sub mt16">
+      "성실합니다"로 끝나는 문장을, 지원 직무의 언어로 다시 씁니다.
+      전체 문항 첨삭 + 전후 비교본 + 키워드 리포트 + 예상 면접질문 10개까지 한 번에.
+    </p>
+
+    <ul class="hero-points">
+      <li>10분 내 발송</li>
+      <li>직무별 맞춤</li>
+      <li>29,000원 단일가</li>
+    </ul>
+
+    <div class="mt24">
+      <button class="btn btn-lg" id="pay">29,000원으로 첨삭 리포트 받기</button>
+      <p class="btn-note">결제 후 자소서 제출 → 10분 내 리포트 발송</p>
+    </div>
+  </div>
+</section>
+
+<!-- 2. 이런 분께 -->
+<section class="soft">
+  <div class="wrap">
+    <h2>이런 분께 필요합니다</h2>
+    <p class="sub mt8">IT 직무 지원자들이 가장 많이 막히는 지점 3가지입니다.</p>
+
+    <div class="mt24">
+      <div class="card">
+        <span class="num">1</span>
+        <h3>다 썼는데, 잘 쓴 건지 모르겠다</h3>
+        <p class="sub mt8">
+          분량은 채웠는데 피드백 줄 사람이 없습니다. 친구에게 보여줘도
+          "괜찮은데?" 한 마디로 끝나서, 뭘 고쳐야 할지 알 수가 없습니다.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="num">2</span>
+        <h3>프로젝트 얘기가 기술 나열로만 끝난다</h3>
+        <p class="sub mt8">
+          "Spring Boot, MySQL로 쇼핑몰을 만들었습니다"에서 멈춥니다.
+          무엇을 해결했고 어떤 역할이었는지가 빠지면 현업 눈에는 남는 게 없습니다.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="num">3</span>
+        <h3>회사마다 다시 쓰는데 시간이 없다</h3>
+        <p class="sub mt8">
+          마감은 내일인데 지원 직무는 계속 바뀝니다. 복붙한 티가 나는 자소서로는
+          서류에서 계속 걸립니다.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. 무료 체험 -->
+<section>
+  <div class="wrap">
+    <span class="eyebrow">무료</span>
+    <h2>먼저 한 문단만 진단받아 보세요</h2>
+    <p class="sub mt8">
+      자소서 일부를 붙여넣으면 어떤 부분이 약한지 바로 알려드립니다. 회원가입 없이 무료입니다.
+    </p>
+
+    <div class="mt16">
+      <textarea id="free-input" maxlength="1000"
+        placeholder="자소서 문항 하나를 붙여넣어 주세요.&#10;예) 저는 학부 시절 팀 프로젝트에서 백엔드를 맡아 성실하게 개발했습니다..."></textarea>
+      <div class="counter"><span id="count">0</span> / 1,000자</div>
+
+      <button class="btn btn-ghost mt12" id="free-btn">무료로 진단받기</button>
+
+      <div class="result" id="free-result">
+        진단 결과가 여기에 표시됩니다.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. 결과 샘플 -->
+<section class="soft">
+  <div class="wrap">
+    <h2>유료 리포트는 이렇게 옵니다</h2>
+    <p class="sub mt8">실제 발송되는 리포트의 미리보기입니다.</p>
+
+    <div class="preview mt24">
+      <div class="preview-head">AI 자소서 첨삭 리포트 · 백엔드 개발 직무</div>
+      <div class="preview-body">
+
+        <h3>1. 첨삭 전후 비교</h3>
+        <div class="diff mt12">
+          <span class="tag">BEFORE</span>
+          <p>팀 프로젝트에서 백엔드를 맡아 성실하게 개발했고, 맡은 일에 최선을 다했습니다.</p>
+        </div>
+        <div class="diff after">
+          <span class="tag">AFTER</span>
+          <p>4인 팀의 백엔드를 맡아 주문 API를 설계했고, 조회 쿼리에 인덱스를 추가해
+             응답 시간을 1.8초에서 0.4초로 줄였습니다.</p>
+        </div>
+
+        <h3 class="mt24">2. 직무 키워드 리포트</h3>
+        <p class="sub mt8" style="font-size:14px;">채용공고에서 뽑은 키워드 중 자소서에 빠진 항목</p>
+        <div class="chips">
+          <span class="chip">트러블슈팅</span>
+          <span class="chip">성능 개선</span>
+          <span class="chip">협업 / 코드리뷰</span>
+          <span class="chip">RDB 설계</span>
+        </div>
+
+        <h3 class="mt24">3. 예상 면접질문 10개</h3>
+        <ol class="qlist">
+          <li>응답 시간을 줄인 과정에서 가장 먼저 확인한 지표는 무엇인가요?</li>
+          <li>인덱스 추가로 생기는 부작용은 어떻게 고려했나요?</li>
+        </ol>
+        <ol class="qlist blur" start="3">
+          <li>팀 내 코드리뷰에서 의견이 갈렸을 때 어떻게 조율했나요?</li>
+          <li>해당 API의 동시 요청 처리는 어떻게 설계했나요?</li>
+          <li>지금 다시 만든다면 무엇을 바꾸시겠습니까?</li>
+        </ol>
+        <p class="lock">나머지 8개 질문은 리포트에서 확인하실 수 있습니다</p>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. 가격 -->
+<section>
+  <div class="wrap">
+    <h2 class="center">가격은 하나입니다</h2>
+    <p class="sub mt8 center">문항 수, 직무와 상관없이 단일가입니다.</p>
+
+    <div class="price-box mt24">
+      <div class="price">29,000<small>원</small></div>
+      <p class="sub">1회 · 전 문항 포함</p>
+
+      <ul class="incl">
+        <li>
+          <span class="check">✓</span>
+          <span>전체 문항 첨삭
+            <span class="desc">문항 개수 제한 없이 전부 첨삭합니다.</span>
+          </span>
+        </li>
+        <li>
+          <span class="check">✓</span>
+          <span>첨삭 전후 비교본
+            <span class="desc">무엇이 왜 바뀌었는지 문장 단위로 확인합니다.</span>
+          </span>
+        </li>
+        <li>
+          <span class="check">✓</span>
+          <span>직무 키워드 리포트
+            <span class="desc">지원 직무 공고 기준으로 빠진 키워드를 뽑아드립니다.</span>
+          </span>
+        </li>
+        <li>
+          <span class="check">✓</span>
+          <span>예상 면접질문 10개
+            <span class="desc">내 자소서에서 나올 질문만 골라 정리합니다.</span>
+          </span>
+        </li>
+      </ul>
+
+      <div class="mt24">
+        <button class="btn btn-lg" id="pay">29,000원 결제하고 첨삭받기</button>
+        <p class="btn-note">결제 후 10분 내 리포트 발송</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. 만든 사람 -->
+<section class="soft">
+  <div class="wrap">
+    <h2>누가 만들었나요</h2>
+
+    <div class="card mt24">
+      <div class="author">
+        <div class="avatar">IT</div>
+        <div>
+          <h3>현업 개발자가 직접 설계한 첨삭 기준</h3>
+          <p class="sub" style="font-size:14px;">서류를 읽는 쪽의 기준으로 고칩니다.</p>
+        </div>
+      </div>
+
+      <ul class="career">
+        <li>8년차 현업 개발자</li>
+        <li>SAP ERP 강사</li>
+        <li>IT 취업 도서 저자</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 7. FAQ -->
+<section>
+  <div class="wrap">
+    <h2>자주 묻는 질문</h2>
+
+    <div class="mt16">
+      <details>
+        <summary>정말 10분 안에 받을 수 있나요?</summary>
+        <div class="answer">
+          네. 결제 후 자소서를 제출하시면 평균 10분 이내에 리포트가 발송됩니다.
+          문항이 많은 경우 조금 더 걸릴 수 있습니다.
+        </div>
+      </details>
+
+      <details>
+        <summary>IT 직무가 아니어도 되나요?</summary>
+        <div class="answer">
+          IT 직무(개발, 데이터, 인프라, IT기획 등)에 맞춰 설계된 서비스입니다.
+          다른 직무도 이용은 가능하지만 키워드 리포트의 정확도가 떨어질 수 있습니다.
+        </div>
+      </details>
+
+      <details>
+        <summary>문항이 여러 개여도 추가 비용이 있나요?</summary>
+        <div class="answer">
+          없습니다. 29,000원 단일가로 전체 문항을 첨삭해 드립니다.
+        </div>
+      </details>
+
+      <details>
+        <summary>제 자소서 내용이 외부에 공개되나요?</summary>
+        <div class="answer">
+          아니요. 제출하신 자소서는 첨삭 목적으로만 사용하며, 리포트 발송 후 보관 기간이 지나면 삭제됩니다.
+        </div>
+      </details>
+
+      <details>
+        <summary>환불이 되나요?</summary>
+        <div class="answer">
+          리포트 발송 전이라면 전액 환불됩니다. 발송 이후에는 콘텐츠 특성상 환불이 어렵습니다.
+        </div>
+      </details>
+    </div>
+
+    <div class="mt32">
+      <button class="btn btn-lg" id="pay">29,000원으로 시작하기</button>
+    </div>
+  </div>
+</section>
+
+<!-- 8. 푸터 -->
+<footer>
+  <div class="wrap">
+    <dl>
+      <div class="row"><dt>상호</dt><dd></dd></div>
+      <div class="row"><dt>대표자</dt><dd></dd></div>
+      <div class="row"><dt>사업자등록번호</dt><dd></dd></div>
+      <div class="row"><dt>통신판매업신고</dt><dd></dd></div>
+      <div class="row"><dt>주소</dt><dd></dd></div>
+      <div class="row"><dt>이메일</dt><dd></dd></div>
+      <div class="row"><dt>고객문의</dt><dd></dd></div>
+    </dl>
+    <p class="copyright">© AI 자소서 첨삭 리포트. All rights reserved.</p>
+  </div>
+</footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   설정 - API 주소는 나중에 채웁니다. (키/비밀값은 넣지 않습니다)
+   ============================================================ */
+const CONFIG = { API_URL: "https://itresume-api.ititrich.workers.dev" };
+
+/* ---- 공용: 토스트 ---- */
+let toastTimer = null;
+function showToast(message) {
+  const el = document.getElementById("toast");
+  el.textContent = message;
+  el.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    el.classList.remove("on");
+  }, 2000);
+}
+
+/* ---- 결제 버튼 (아직 껍데기) ---- */
+document.querySelectorAll("#pay").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    showToast("준비 중입니다");
+  });
+});
+
+/* ---- 무료 진단 (아직 껍데기) ---- */
+const freeInput  = document.getElementById("free-input");
+const freeBtn    = document.getElementById("free-btn");
+const freeResult = document.getElementById("free-result");
+const countEl    = document.getElementById("count");
+
+freeInput.addEventListener("input", function () {
+  countEl.textContent = freeInput.value.length.toLocaleString();
+});
+
+// 결과 영역에 메시지를 그리는 함수
+// state: "warn" = 안내/오류,  "done" = 실제 진단 결과
+function setResult(message, state) {
+  freeResult.className = state ? "result " + state : "result";
+  freeResult.textContent = message;
+}
+
+freeBtn.addEventListener("click", async function () {
+  const text = freeInput.value.trim();
+
+  if (text.length < 30) {
+    setResult("자소서 내용을 30자 이상 붙여넣어 주세요.", "warn");
+    freeInput.focus();
+    return;
+  }
+
+  if (!CONFIG.API_URL) {
+    setResult("준비 중입니다", "warn");
+    return;
+  }
+
+  // 요청 중: 버튼을 잠그고 진행 상황을 알려줍니다.
+  const label = freeBtn.textContent;
+  freeBtn.disabled = true;
+  freeBtn.textContent = "진단 중입니다...";
+  setResult("자소서를 읽고 있습니다. 20초 정도 걸립니다.", "warn");
+
+  try {
+    const res = await fetch(CONFIG.API_URL + "/free", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text }),
+    });
+
+    const data = await res.json().catch(function () { return null; });
+
+    if (!res.ok || !data || !data.ok) {
+      setResult(
+        (data && data.error) || "잠시 뒤에 다시 시도해 주세요.",
+        "warn"
+      );
+      return;
+    }
+
+    setResult(data.result, "done");
+  } catch (err) {
+    setResult("연결에 실패했습니다. 잠시 뒤에 다시 시도해 주세요.", "warn");
+  } finally {
+    freeBtn.disabled = false;
+    freeBtn.textContent = label;
+  }
+});
+
+/* ---- FAQ: 하나만 열리도록 ---- */
+const faqItems = document.querySelectorAll("details");
+faqItems.forEach(function (item) {
+  item.addEventListener("toggle", function () {
+    if (!item.open) return;
+    faqItems.forEach(function (other) {
+      if (other !== item) other.open = false;
+    });
+  });
+});
+</script>
+
+</body>
+</html>

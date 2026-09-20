@@ -1,0 +1,20 @@
+# Cloudflare Workers 설정 파일
+# 이 파일에는 API 키를 절대 쓰지 않습니다. 키는 wrangler secret 명령으로 따로 등록합니다.
+
+name = "itresume-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# 로그 보기(wrangler tail)를 켭니다.
+[observability]
+enabled = true
+
+# 같은 IP 기준 1분(60초)에 5번까지만 허용하기 위한 저장소입니다.
+# IP마다 전용 카운터가 하나씩 생겨서, 서버가 여러 대로 늘어나도 정확히 셉니다.
+[[durable_objects.bindings]]
+name = "RATE_LIMIT_DO"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]
