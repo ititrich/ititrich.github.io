@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>리포트 생성 중 · AI 자소서 첨삭 리포트</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root{
+    --point: #2F6BFF;
+    --point-dark: #1F4FD8;
+    --point-soft: #EEF3FF;
+    --danger: #E5484D;
+    --danger-dark: #C1272D;
+    --danger-soft: #FEF1F1;
+    --text: #17191C;
+    --text-sub: #5B6270;
+    --line: #E8EAEF;
+    --bg-soft: #F7F8FA;
+    --radius: 16px;
+    --radius-lg: 22px;
+    --shadow: 0 2px 10px rgba(23,25,28,.06);
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0; background:#fff; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+                 "Pretendard", "Noto Sans KR", "맑은 고딕", "Malgun Gothic", sans-serif;
+    font-size:16px; line-height:1.7; letter-spacing:-0.01em;
+    word-break: keep-all; overflow-wrap: break-word;
+  }
+  .wrap{ width:100%; max-width:560px; margin:0 auto; padding:0 20px; }
+  h1{ font-size:24px; font-weight:800; margin:0; line-height:1.4; letter-spacing:-0.02em; }
+  h2{ font-size:20px; font-weight:800; margin:0; }
+  p{ margin:0; }
+  .sub{ color: var(--text-sub); font-size:15px; }
+  .mt8{ margin-top:8px; } .mt16{ margin-top:16px; } .mt24{ margin-top:24px; }
+
+  header{ padding: 40px 0 28px; text-align:center; }
+  .badge{
+    display:inline-block; background: var(--point-soft); color: var(--point-dark);
+    font-size:13px; font-weight:700; padding:6px 12px; border-radius:999px;
+    margin-bottom:14px;
+  }
+
+  .panel{
+    border:1.5px solid var(--line); border-radius: var(--radius);
+    padding:22px; background:#fff; box-shadow: var(--shadow);
+  }
+  .panel.busy{ border-color: var(--point); background: var(--point-soft); }
+  .panel.bad{ border-color: var(--danger); background: var(--danger-soft); }
+
+  .loading{ display:flex; align-items:center; gap:12px; justify-content:center; }
+  .spinner{
+    width:22px; height:22px; flex:0 0 auto;
+    border:3px solid #fff; border-top-color: var(--point);
+    border-radius:50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .spinner{ animation-duration: 2.4s; } }
+  .loading span{ font-size:16px; font-weight:800; color: var(--point-dark); }
+  .elapsed{ text-align:center; font-size:13px; color: var(--text-sub); margin-top:10px; }
+
+  .btn{
+    display:block; width:100%; border:0; cursor:pointer;
+    background: var(--point); color:#fff;
+    font-size:16px; font-weight:800; padding:17px 20px;
+    border-radius: var(--radius-lg); box-shadow: var(--shadow);
+    text-align:center; text-decoration:none;
+  }
+  .btn:hover{ background: var(--point-dark); }
+  .btn-ghost{
+    background:#fff; color: var(--text-sub);
+    border:1.5px solid var(--line); box-shadow:none;
+    font-size:14px; font-weight:700; padding:13px 20px; margin-top:8px;
+  }
+  .btn-ghost:hover{ background: var(--bg-soft); color: var(--text); }
+
+  /* 영수증 */
+  .receipt{ margin-top:14px; }
+  .receipt .row{
+    display:flex; gap:10px; padding:8px 0;
+    border-top:1px solid var(--line); font-size:14px;
+  }
+  .receipt .row:first-child{ border-top:0; }
+  .receipt dt{ flex:0 0 92px; color: var(--text-sub); margin:0; }
+  .receipt dd{ margin:0; font-weight:700; word-break:break-all; }
+
+  /* 결과 */
+  .score-row{ display:flex; align-items:center; gap:10px; margin-top:12px; }
+  .chip-dot{ flex:0 0 auto; width:10px; height:10px; border-radius:50%; }
+  .score-name{ flex:0 0 56px; font-size:13px; font-weight:700; color: var(--text-sub); }
+  .score-bar{ flex:1; height:10px; border-radius:999px; background: var(--line); overflow:hidden; }
+  .score-bar i{ display:block; height:100%; border-radius:999px; }
+  .score-num{ flex:0 0 44px; text-align:right; font-size:14px; font-weight:800; }
+  .score-why{ font-size:13px; color: var(--text-sub); line-height:1.6; margin:5px 0 0 76px; }
+
+  .r-head{ font-size:13px; font-weight:800; color: var(--point-dark); margin:26px 0 8px; }
+  .r-head:first-child{ margin-top:0; }
+  .r-summary{ font-size:15px; }
+
+  .fix{ border:1px solid var(--line); border-radius:12px; margin-top:12px; overflow:hidden; }
+  .fix-grid{ display:grid; grid-template-columns: 1fr; }
+  .fix-col{ padding:13px 14px; }
+  .fix-col + .fix-col{ border-top:1px solid var(--line); }
+  .fix-col.before{ background:#FAFAFB; }
+  .fix-col .tag{ display:block; font-size:11px; font-weight:800; margin-bottom:5px; }
+  .fix-col.before .tag{ color:#9AA0AC; }
+  .fix-col.after .tag{ color: var(--point-dark); }
+  .fix-col p{ font-size:14px; line-height:1.65; }
+  .fix-why{
+    padding:11px 14px; border-top:1px solid var(--line);
+    font-size:13px; color: var(--text-sub); line-height:1.6;
+  }
+  @media (min-width: 420px){
+    .fix-grid{ grid-template-columns: 1fr 1fr; }
+    .fix-col + .fix-col{ border-top:0; border-left:1px solid var(--line); }
+  }
+
+  .kw{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .kw span{ font-size:12px; font-weight:700; padding:5px 10px; border-radius:999px; }
+  .kw.has span{ background: var(--point-soft); color: var(--point-dark); }
+  .kw.missing span{ background: var(--danger-soft); color: var(--danger-dark); }
+  .kw-label{ font-size:13px; font-weight:700; color: var(--text-sub); margin-top:14px; }
+
+  .qa{ border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:10px; }
+  .qa .q{ font-size:14px; font-weight:700; }
+  .qa .a{ font-size:13px; color: var(--text-sub); margin-top:6px; line-height:1.6; }
+  .qa .num{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%;
+    background: var(--point-soft); color: var(--point-dark);
+    font-size:12px; font-weight:800; margin-right:7px;
+  }
+
+  .err-title{ font-size:17px; font-weight:800; color: var(--danger-dark); }
+  .err-msg{ font-size:15px; color: var(--danger-dark); margin-top:8px; }
+  .err-hint{ font-size:13px; color: var(--text-sub); margin-top:12px; }
+
+  footer{
+    border-top:1px solid var(--line); margin-top:40px;
+    padding:24px 0 40px; font-size:13px; color:#9AA0AC; text-align:center;
+  }
+
+  @media print{
+    body *{ visibility:hidden; }
+    #report, #report *{ visibility:visible; }
+    #report{ position:absolute; left:0; top:0; width:100%; }
+    #report .no-print{ display:none; }
+    .fix, .fix-col, .fix-why, .qa{ break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="badge">결제 완료</span>
+    <h1>리포트를 만들고 있습니다</h1>
+    <p class="sub mt8">창을 닫지 마세요. 완료되면 이 화면에 바로 표시됩니다.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 진행 상태 / 오류 -->
+  <div class="panel busy" id="status">
+    <div class="loading">
+      <div class="spinner"></div>
+      <span id="status-text">결제를 확인하고 있습니다</span>
+    </div>
+    <p class="elapsed" id="elapsed"></p>
+  </div>
+
+  <!-- 결제 내역 -->
+  <div class="panel mt16" id="receipt-box" hidden>
+    <h2 style="font-size:15px;">결제 내역</h2>
+    <dl class="receipt" id="receipt"></dl>
+  </div>
+
+  <!-- 리포트 -->
+  <div id="report"></div>
+</main>
+
+<footer>
+  <div class="wrap">AI 자소서 첨삭 리포트</div>
+</footer>
+
+<script>
+/* ============================================================
+   설정 - 시크릿 키는 이 파일에 들어가지 않습니다.
+   결제 승인은 서버(/confirm)에서 처리합니다.
+   ============================================================ */
+const CONFIG = {
+  API_URL: "https://itresume-api.ititrich.workers.dev",
+  POLL_INTERVAL_MS: 3000,   // 결과를 몇 초마다 확인할지
+  POLL_TIMEOUT_MS: 300000,  // 5분까지 기다립니다
+};
+
+const PRICE = 29000;
+const ORDER_STORAGE_KEY = "itresume_order";
+
+const statusBox = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+const elapsedText = document.getElementById("elapsed");
+const receiptBox = document.getElementById("receipt-box");
+const receiptList = document.getElementById("receipt");
+const reportBox = document.getElementById("report");
+
+/* ---- 도우미 ---- */
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function setBusy(message) {
+  statusBox.hidden = false;
+  statusBox.className = "panel busy";
+  statusBox.textContent = "";
+
+  const box = el("div", "loading");
+  box.appendChild(el("div", "spinner"));
+  box.appendChild(el("span", null, message));
+  statusBox.appendChild(box);
+  statusBox.appendChild(el("p", "elapsed", ""));
+}
+
+function setElapsed(seconds) {
+  const line = statusBox.querySelector(".elapsed");
+  if (line) line.textContent = seconds + "초 경과";
+}
+
+function setError(title, message, hint) {
+  statusBox.hidden = false;
+  statusBox.className = "panel bad";
+  statusBox.textContent = "";
+  statusBox.appendChild(el("p", "err-title", title));
+  statusBox.appendChild(el("p", "err-msg", message));
+  if (hint) statusBox.appendChild(el("p", "err-hint", hint));
+
+  const home = el("a", "btn btn-ghost", "첫 화면으로 돌아가기");
+  home.href = "/";
+  home.style.marginTop = "16px";
+  statusBox.appendChild(home);
+}
+
+function addReceiptRow(label, value) {
+  const row = el("div", "row");
+  row.appendChild(el("dt", null, label));
+  row.appendChild(el("dd", null, value));
+  receiptList.appendChild(row);
+}
+
+/* ---- 점수 색상 ---- */
+const SCORE_COLORS = [
+  { min: 70, hex: "#2F6BFF" },
+  { min: 40, hex: "#F5A524" },
+  { min: 0,  hex: "#E5484D" },
+];
+function scoreColor(value) {
+  for (const step of SCORE_COLORS) {
+    if (value >= step.min) return step.hex;
+  }
+  return "#E5484D";
+}
+
+/* ---- 리포트 렌더링 ---- */
+function renderReport(data) {
+  reportBox.textContent = "";
+
+  const panel = el("div", "panel mt16");
+
+  // 점수
+  const scores = data.scores || {};
+  const reasons = data.score_reasons || {};
+  const names = Object.keys(scores);
+  if (names.length) {
+    panel.appendChild(el("div", "r-head", "진단 점수"));
+    names.forEach(function (name) {
+      const value = Math.max(0, Math.min(100, Number(scores[name]) || 0));
+      const hex = scoreColor(value);
+
+      const row = el("div", "score-row");
+      const dot = el("span", "chip-dot");
+      dot.style.backgroundColor = hex;
+      row.appendChild(dot);
+      row.appendChild(el("span", "score-name", name));
+
+      const bar = el("div", "score-bar");
+      const fill = el("i");
+      fill.style.width = value + "%";
+      fill.style.backgroundColor = hex;
+      bar.appendChild(fill);
+      row.appendChild(bar);
+
+      const num = el("span", "score-num", value + "점");
+      num.style.color = hex;
+      row.appendChild(num);
+      panel.appendChild(row);
+
+      if (reasons[name]) panel.appendChild(el("p", "score-why", reasons[name]));
+    });
+  }
+
+  // 총평
+  if (data.summary) {
+    panel.appendChild(el("div", "r-head", "총평"));
+    panel.appendChild(el("p", "r-summary", data.summary));
+  }
+
+  // 첨삭 전/후
+  const fixes = Array.isArray(data.fixes) ? data.fixes : [];
+  if (fixes.length) {
+    panel.appendChild(el("div", "r-head", "전체 문항 첨삭 (" + fixes.length + "곳)"));
+    fixes.forEach(function (fix) {
+      const card = el("div", "fix");
+      const grid = el("div", "fix-grid");
+
+      const before = el("div", "fix-col before");
+      before.appendChild(el("span", "tag", "수정 전"));
+      before.appendChild(el("p", null, fix.before || ""));
+      grid.appendChild(before);
+
+      const after = el("div", "fix-col after");
+      after.appendChild(el("span", "tag", "수정 후"));
+      after.appendChild(el("p", null, fix.after || ""));
+      grid.appendChild(after);
+
+      card.appendChild(grid);
+      if (fix.why) card.appendChild(el("div", "fix-why", fix.why));
+      panel.appendChild(card);
+    });
+  }
+
+  // 직무 키워드
+  const kw = data.keywords || {};
+  const has = Array.isArray(kw["있음"]) ? kw["있음"] : [];
+  const missing = Array.isArray(kw["없음"]) ? kw["없음"] : [];
+  if (has.length || missing.length) {
+    panel.appendChild(el("div", "r-head", "직무 키워드 매칭표"));
+    if (has.length) {
+      panel.appendChild(el("p", "kw-label", "자소서에 있는 키워드"));
+      const box = el("div", "kw has");
+      has.forEach(function (word) { box.appendChild(el("span", null, word)); });
+      panel.appendChild(box);
+    }
+    if (missing.length) {
+      panel.appendChild(el("p", "kw-label", "빠져 있는 키워드"));
+      const box = el("div", "kw missing");
+      missing.forEach(function (word) { box.appendChild(el("span", null, word)); });
+      panel.appendChild(box);
+    }
+  }
+
+  // 예상 면접질문
+  const questions = Array.isArray(data.questions) ? data.questions : [];
+  if (questions.length) {
+    panel.appendChild(el("div", "r-head", "예상 면접질문 " + questions.length + "개"));
+    questions.forEach(function (item, index) {
+      const card = el("div", "qa");
+      const q = el("p", "q");
+      q.appendChild(el("span", "num", String(index + 1)));
+      q.appendChild(document.createTextNode(item["질문"] || ""));
+      card.appendChild(q);
+      if (item["답변뼈대"]) card.appendChild(el("p", "a", item["답변뼈대"]));
+      panel.appendChild(card);
+    });
+  }
+
+  // 버튼
+  const actions = el("div", "no-print");
+  actions.style.marginTop = "22px";
+  const printBtn = el("button", "btn", "이 리포트를 PDF로 저장");
+  printBtn.addEventListener("click", function () { window.print(); });
+  actions.appendChild(printBtn);
+
+  const home = el("a", "btn btn-ghost", "첫 화면으로");
+  home.href = "/";
+  actions.appendChild(home);
+  panel.appendChild(actions);
+
+  reportBox.appendChild(panel);
+}
+
+/* ---- 진행 ---- */
+const params = new URLSearchParams(location.search);
+const paymentKey = params.get("paymentKey");
+const orderId = params.get("orderId");
+const amount = Number(params.get("amount"));
+
+let startedAt = Date.now();
+let ticker = null;
+
+function startTicker() {
+  stopTicker();
+  ticker = setInterval(function () {
+    setElapsed(Math.round((Date.now() - startedAt) / 1000));
+  }, 1000);
+}
+function stopTicker() {
+  if (ticker) clearInterval(ticker);
+  ticker = null;
+}
+
+function loadSavedOrder() {
+  try {
+    const raw = localStorage.getItem(ORDER_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearSavedOrder() {
+  try { localStorage.removeItem(ORDER_STORAGE_KEY); } catch (e) {}
+}
+
+async function postJson(path, body) {
+  const res = await fetch(CONFIG.API_URL + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(function () { return null; });
+  return { res: res, data: data };
+}
+
+async function pollUntilDone() {
+  const deadline = Date.now() + CONFIG.POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise(function (done) {
+      setTimeout(done, CONFIG.POLL_INTERVAL_MS);
+    });
+
+    let out;
+    try {
+      out = await postJson("/status", { orderId: orderId });
+    } catch (e) {
+      continue; // 일시적인 네트워크 문제는 넘어갑니다
+    }
+
+    const data = out.data;
+    if (!data || !data.ok) continue;
+
+    if (data.status === "done") {
+      stopTicker();
+      statusBox.hidden = true;
+      clearSavedOrder();
+      renderReport(data.result);
+      return;
+    }
+    if (data.status === "error") {
+      stopTicker();
+      setError(
+        "리포트 생성에 실패했습니다",
+        data.error || "잠시 뒤에 이 페이지를 새로고침해 주세요.",
+        "결제는 정상 처리되었습니다. 주문번호 " + orderId + " 로 문의해 주시면 처리해 드립니다."
+      );
+      return;
+    }
+  }
+
+  stopTicker();
+  setError(
+    "시간이 오래 걸리고 있습니다",
+    "리포트가 아직 완성되지 않았습니다.",
+    "결제는 정상 처리되었습니다. 이 페이지를 새로고침하면 진행 상태를 다시 확인합니다. 주문번호: " + orderId
+  );
+}
+
+async function run() {
+  if (!paymentKey || !orderId || !amount) {
+    setError(
+      "잘못된 접근입니다",
+      "결제 정보가 확인되지 않았습니다.",
+      "결제를 마친 뒤 자동으로 이동되는 주소로만 접근할 수 있습니다."
+    );
+    return;
+  }
+
+  // 결제 내역 표시
+  addReceiptRow("상품", "AI 자소서 첨삭 리포트");
+  addReceiptRow("결제 금액", amount.toLocaleString() + "원");
+  addReceiptRow("주문번호", orderId);
+  receiptBox.hidden = false;
+
+  const saved = loadSavedOrder();
+
+  setBusy("결제를 확인하고 있습니다");
+  startTicker();
+
+  let out;
+  try {
+    out = await postJson("/confirm", {
+      paymentKey: paymentKey,
+      orderId: orderId,
+      amount: amount,
+      email: saved && saved.email ? saved.email : "",
+      input: saved && saved.input ? saved.input : "",
+    });
+  } catch (e) {
+    stopTicker();
+    setError(
+      "서버에 연결하지 못했습니다",
+      "인터넷 상태를 확인한 뒤 이 페이지를 새로고침해 주세요.",
+      "주문번호: " + orderId
+    );
+    return;
+  }
+
+  const data = out.data;
+
+  if (!out.res.ok || !data || !data.ok) {
+    stopTicker();
+    setError(
+      "결제 승인에 실패했습니다",
+      (data && data.error) || "잠시 뒤에 다시 시도해 주세요.",
+      "결제가 이루어졌다면 자동으로 취소됩니다. 주문번호: " + orderId
+    );
+    return;
+  }
+
+  // 이미 완성되어 있는 경우 (새로고침 등)
+  if (data.status === "done" && data.result) {
+    stopTicker();
+    statusBox.hidden = true;
+    clearSavedOrder();
+    renderReport(data.result);
+    return;
+  }
+
+  if (data.status === "error") {
+    stopTicker();
+    setError(
+      "리포트 생성에 실패했습니다",
+      data.error || "잠시 뒤에 새로고침해 주세요.",
+      "결제는 정상 처리되었습니다. 주문번호: " + orderId
+    );
+    return;
+  }
+
+  setBusy("리포트 생성 중입니다");
+  startTicker();
+  await pollUntilDone();
+}
+
+run();
+</script>
+
+</body>
+</html>

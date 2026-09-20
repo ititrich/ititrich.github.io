@@ -371,6 +371,32 @@
   .check{ color: var(--point); font-weight:900; flex:0 0 auto; }
   .incl span.desc{ display:block; font-size:13px; font-weight:400; color: var(--text-sub); }
 
+  /* ===== 결제 영역 ===== */
+  .pay-field{ text-align:left; margin-top: 24px; }
+  .pay-field label{
+    display:block; font-size:13px; font-weight:700;
+    color: var(--text-sub); margin-bottom:7px;
+  }
+  .pay-field input{
+    width:100%;
+    padding: 15px 16px;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius);
+    font-family: inherit; font-size: 15px; color: var(--text);
+    background:#fff;
+  }
+  .pay-field input:focus{ outline:none; border-color: var(--point); }
+  .pay-field input.invalid{ border-color: var(--danger); }
+  .field-note{
+    font-size:13px; font-weight:700; color: var(--danger);
+    margin-top:6px; min-height:1px; text-align:left;
+  }
+  #payment-method, #agreement{ margin-top: 14px; }
+  .pay-error{
+    font-size:14px; font-weight:700; color: var(--danger);
+    text-align:left; margin-top:10px;
+  }
+
   /* ===== 만든 사람 ===== */
   .author{ display:flex; gap:14px; align-items:center; }
   .avatar{
@@ -611,6 +637,19 @@
         </li>
       </ul>
 
+      <!-- 이메일: 리포트를 받을 주소 -->
+      <div class="pay-field">
+        <label for="email">리포트 받을 이메일</label>
+        <input type="email" id="email" inputmode="email" autocomplete="email"
+               placeholder="example@email.com" />
+        <p class="field-note" id="email-note"></p>
+      </div>
+
+      <!-- 토스페이먼츠 결제수단 / 약관동의 -->
+      <div id="payment-method"></div>
+      <div id="agreement"></div>
+      <p class="pay-error" id="pay-error"></p>
+
       <div class="mt24">
         <button class="btn btn-lg" id="pay">29,000원 결제하고 첨삭받기</button>
         <p class="btn-note">결제 후 10분 내 리포트 발송</p>
@@ -710,6 +749,7 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="https://js.tosspayments.com/v2/standard"></script>
 <script>
 /* ============================================================
    설정 - API 주소는 나중에 채웁니다. (키/비밀값은 넣지 않습니다)
@@ -718,7 +758,23 @@ const CONFIG = {
   API_URL: "https://itresume-api.ititrich.workers.dev",
   TIMEOUT_MS: 30000,   // 이 시간을 넘기면 타임아웃 안내를 띄웁니다.
   MIN_CHARS: 30,       // 이 글자 수보다 짧으면 서버를 부르지 않습니다.
+
+  // ★ 토스페이먼츠 클라이언트 키를 여기에 넣으세요. (test_gck_ 로 시작)
+  //   이 키는 공개되어도 되는 키입니다. 시크릿 키는 절대 넣지 마세요.
+  TOSS_CLIENT_KEY: "",
 };
+
+/* 결제 금액과 상품명 - 화면에서 바꿀 수 없는 고정값입니다.
+   서버도 같은 금액을 따로 확인하므로, 이 값을 고쳐도 결제가 통과되지 않습니다. */
+const PRICE = 29000;
+const ORDER_NAME = "AI 자소서 첨삭 리포트";
+
+// 결제 후 돌아올 주소
+const SUCCESS_URL = location.origin + "/success.html";
+const FAIL_URL = location.origin + "/fail.html";
+
+// 결제 직전에 자소서를 임시 보관할 때 쓰는 이름
+const ORDER_STORAGE_KEY = "itresume_order";
 
 /* ---- 공용: 토스트 ---- */
 let toastTimer = null;
@@ -732,12 +788,152 @@ function showToast(message) {
   }, 2000);
 }
 
-/* ---- 결제 버튼 (아직 껍데기) ---- */
-document.querySelectorAll("#pay").forEach(function (btn) {
-  btn.addEventListener("click", function () {
-    showToast("준비 중입니다");
+/* ============================================================
+   결제 (토스페이먼츠 결제위젯 v2)
+   ============================================================ */
+
+const emailInput = document.getElementById("email");
+const emailNote = document.getElementById("email-note");
+const payError = document.getElementById("pay-error");
+
+let tossWidgets = null;     // 위젯 객체
+let widgetsReady = false;   // 렌더링이 끝났는지
+
+// 주문번호는 매번 새로 만듭니다. (6~64자, 영문/숫자/하이픈)
+function makeOrderId() {
+  const time = Date.now().toString(36);
+  let random = "";
+  if (window.crypto && crypto.getRandomValues) {
+    const buf = new Uint8Array(8);
+    crypto.getRandomValues(buf);
+    random = Array.from(buf, function (n) {
+      return n.toString(36).padStart(2, "0");
+    }).join("");
+  } else {
+    random = Math.random().toString(36).slice(2, 12);
+  }
+  return ("itr-" + time + "-" + random).slice(0, 64);
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function setPayError(message) {
+  payError.textContent = message || "";
+}
+
+// 위젯 준비
+async function setupPaymentWidget() {
+  if (!CONFIG.TOSS_CLIENT_KEY) {
+    setPayError("결제 설정이 아직 완료되지 않았습니다. 잠시 뒤에 다시 시도해 주세요.");
+    return;
+  }
+  if (typeof TossPayments !== "function") {
+    setPayError("결제 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+    return;
+  }
+
+  try {
+    const tossPayments = TossPayments(CONFIG.TOSS_CLIENT_KEY);
+    tossWidgets = tossPayments.widgets({ customerKey: TossPayments.ANONYMOUS });
+
+    await tossWidgets.setAmount({ currency: "KRW", value: PRICE });
+
+    await Promise.all([
+      tossWidgets.renderPaymentMethods({
+        selector: "#payment-method",
+        variantKey: "DEFAULT",
+      }),
+      tossWidgets.renderAgreement({
+        selector: "#agreement",
+        variantKey: "AGREEMENT",
+      }),
+    ]);
+
+    widgetsReady = true;
+    setPayError("");
+  } catch (err) {
+    console.error(err);
+    setPayError("결제 화면을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+  }
+}
+
+// 결제 요청
+async function requestTossPayment() {
+  setPayError("");
+  emailNote.textContent = "";
+  emailInput.classList.remove("invalid");
+
+  // 위젯이 아직 준비되지 않았으면 결제 영역으로 안내
+  if (!widgetsReady) {
+    document.getElementById("payment-method").scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    setPayError("결제 화면을 준비하는 중입니다. 잠시 뒤에 다시 눌러 주세요.");
+    return;
+  }
+
+  const email = emailInput.value.trim();
+  if (!isValidEmail(email)) {
+    emailInput.classList.add("invalid");
+    emailNote.textContent = "리포트를 받을 이메일 주소를 정확히 입력해 주세요.";
+    emailInput.scrollIntoView({ behavior: "smooth", block: "center" });
+    emailInput.focus();
+    return;
+  }
+
+  const orderId = makeOrderId();
+
+  // 결제가 끝나면 다른 페이지로 이동하므로,
+  // 리포트를 만들 자소서를 이 브라우저에 잠시 보관해 둡니다.
+  try {
+    localStorage.setItem(
+      ORDER_STORAGE_KEY,
+      JSON.stringify({
+        orderId: orderId,
+        email: email,
+        input: freeInput.value.trim(),
+        savedAt: Date.now(),
+      })
+    );
+  } catch (e) {
+    // 저장이 막혀 있어도 결제는 진행합니다. (결과 화면에서 다시 입력받습니다)
+  }
+
+  try {
+    await tossWidgets.requestPayment({
+      orderId: orderId,
+      orderName: ORDER_NAME,
+      customerEmail: email,
+      successUrl: SUCCESS_URL,
+      failUrl: FAIL_URL,
+    });
+  } catch (err) {
+    console.error(err);
+    // 사용자가 결제창을 직접 닫은 경우는 오류로 보지 않습니다.
+    if (err && (err.code === "USER_CANCEL" || err.code === "PAY_PROCESS_CANCELED")) {
+      return;
+    }
+    setPayError(
+      (err && err.message) ||
+      "결제를 시작하지 못했습니다. 약관 동의를 확인한 뒤 다시 시도해 주세요."
+    );
+  }
+}
+
+// 페이지 안의 모든 #pay 버튼에 연결
+function bindPayButtons() {
+  document.querySelectorAll("#pay").forEach(function (btn) {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", requestTossPayment);
   });
-});
+}
+
+bindPayButtons();
+setupPaymentWidget();
 
 /* ---- 무료 진단 (아직 껍데기) ---- */
 const freeInput  = document.getElementById("free-input");
@@ -887,9 +1083,8 @@ function renderResult(data) {
 
   const payBtn = el("button", "btn", "상세 리포트 받기 29,000원");
   payBtn.id = "pay";
-  payBtn.addEventListener("click", function () {
-    showToast("준비 중입니다");
-  });
+  payBtn.dataset.bound = "1";
+  payBtn.addEventListener("click", requestTossPayment);
   actions.appendChild(payBtn);
 
   const printBtn = el("button", "btn btn-print", "이 결과를 PDF로 저장");

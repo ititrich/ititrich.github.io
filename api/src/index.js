@@ -28,9 +28,20 @@ const ALLOWED_ORIGINS = [
 // 요청 본문 최대 글자 수
 const MAX_BODY_CHARS = 8000;
 
+// 자소서 최소 글자 수
+const MIN_TEXT_CHARS = 30;
+
 // 같은 IP 기준: 1분(60초) 안에 5번까지 허용
 const RATE_LIMIT_COUNT = 5;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+/* ---------- 결제 ---------- */
+
+// 판매 금액입니다. 이 값과 다른 금액으로 결제되면 승인하지 않습니다.
+const PRICE = 29000;
+
+// 토스페이먼츠 결제 승인 API
+const TOSS_CONFIRM_URL = "https://api.tosspayments.com/v1/payments/confirm";
 
 /* ---------- Claude 호출 규격 ---------- */
 
@@ -184,6 +195,68 @@ export class RateLimiter {
   async alarm() {
     await this.state.storage.deleteAll();
   }
+}
+
+/* ---------- 주문 보관소 ---------- */
+
+/* 주문번호 하나마다 이 보관소가 하나씩 만들어집니다.
+   결제 승인 결과와 완성된 리포트를 담아두어, 새로고침해도
+   리포트를 다시 만들지 않습니다. */
+export class OrderStore {
+  constructor(state) {
+    this.state = state;
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const order = (await this.state.storage.get("order")) || null;
+
+    // 현재 상태 조회
+    if (url.pathname === "/get") {
+      return Response.json(order || { status: "none" });
+    }
+
+    // 리포트 생성을 시작해도 되는지 확인하고 자리를 잡습니다.
+    if (url.pathname === "/claim") {
+      const body = await request.json();
+
+      // 이미 만들었거나 만드는 중이면 그대로 알려줍니다.
+      if (order && (order.status === "generating" || order.status === "done")) {
+        return Response.json({ ...order, claimed: false });
+      }
+
+      const next = {
+        status: "generating",
+        email: body.email || "",
+        paymentKey: body.paymentKey || "",
+        amount: body.amount || 0,
+        startedAt: Date.now(),
+      };
+      await this.state.storage.put("order", next);
+      return Response.json({ ...next, claimed: true });
+    }
+
+    // 완성된 리포트 저장
+    if (url.pathname === "/finish") {
+      const body = await request.json();
+      const next = {
+        ...(order || {}),
+        status: body.status, // "done" 또는 "error"
+        result: body.result || null,
+        error: body.error || "",
+        finishedAt: Date.now(),
+      };
+      await this.state.storage.put("order", next);
+      return Response.json(next);
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+}
+
+function orderStub(env, orderId) {
+  const id = env.ORDER_DO.idFromName(orderId);
+  return env.ORDER_DO.get(id);
 }
 
 async function isRateLimited(env, ip) {
@@ -374,6 +447,83 @@ function parseJson(text) {
   }
 }
 
+/* ---------- 결제 승인 ---------- */
+
+// 토스페이먼츠에 결제 승인을 요청합니다. 시크릿 키는 코드에 없습니다.
+async function confirmPayment(env, { paymentKey, orderId, amount }) {
+  const secretKey = String(env.TOSS_SECRET_KEY || "").trim();
+  if (!secretKey) {
+    console.error("TOSS_SECRET_KEY is not set");
+    const error = new Error("nokey");
+    error.noKey = true;
+    throw error;
+  }
+
+  // Basic 인증: base64(시크릿키 + ":")
+  const auth = btoa(secretKey + ":");
+
+  const res = await fetch(TOSS_CONFIRM_URL, {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + auth,
+      "Content-Type": "application/json",
+      // 같은 주문번호로 두 번 요청해도 한 번만 처리되게 합니다.
+      "Idempotency-Key": orderId,
+    },
+    body: JSON.stringify({ paymentKey, orderId, amount }),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    console.error(
+      "toss confirm failed status=" + res.status +
+      " code=" + (data && data.code) +
+      " message=" + (data && data.message)
+    );
+    const error = new Error("tossfail");
+    error.tossCode = data && data.code;
+    throw error;
+  }
+
+  return data;
+}
+
+/* ---------- 리포트 생성 (결제 후 백그라운드) ---------- */
+
+async function generateAndStore(env, orderId, { input, job }) {
+  const stub = orderStub(env, orderId);
+
+  try {
+    const userText =
+      `mode: "paid"\n` +
+      `지원 직무: ${job || "(미입력 - IT 개발 직무 기준으로 판단할 것)"}\n\n` +
+      `--- 자소서 ---\n${input}`;
+
+    const result = await callClaude(env, {
+      mode: "paid",
+      userText,
+      maxTokens: ROUTES["/report"].maxTokens,
+      effort: ROUTES["/report"].effort,
+      schema: SCHEMA_PAID,
+    });
+
+    await stub.fetch("https://order.local/finish", {
+      method: "POST",
+      body: JSON.stringify({ status: "done", result }),
+    });
+  } catch (err) {
+    console.error("report generation failed order=" + orderId, err?.message);
+    await stub.fetch("https://order.local/finish", {
+      method: "POST",
+      body: JSON.stringify({
+        status: "error",
+        error: "리포트를 만드는 중 문제가 생겼습니다.",
+      }),
+    });
+  }
+}
+
 /* ---------- 요청 처리 ---------- */
 
 const ROUTES = {
@@ -392,7 +542,7 @@ const ROUTES = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -405,6 +555,136 @@ export default {
     // 2) 허용하지 않은 주소에서 온 요청은 거절
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {
       return fail("허용되지 않은 접근입니다.", 403, origin);
+    }
+
+    /* ---- 상태 조회: 결과 화면이 몇 초마다 물어보는 가벼운 경로라
+           IP 횟수 제한에서 제외합니다. ---- */
+    if (path === "/status") {
+      if (request.method !== "POST") {
+        return fail("잘못된 요청 방식입니다.", 405, origin);
+      }
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return fail("요청 형식이 올바르지 않습니다.", 400, origin);
+      }
+      const orderId = typeof body?.orderId === "string" ? body.orderId.trim() : "";
+      if (!orderId) return fail("주문번호가 없습니다.", 400, origin);
+
+      const stub = orderStub(env, orderId);
+      const res = await stub.fetch("https://order.local/get");
+      const order = await res.json();
+
+      return json(
+        {
+          ok: true,
+          status: order.status || "none",
+          result: order.result || null,
+          error: order.error || "",
+        },
+        200,
+        origin
+      );
+    }
+
+    /* ---- 결제 승인 ---- */
+    if (path === "/confirm") {
+      if (request.method !== "POST") {
+        return fail("잘못된 요청 방식입니다.", 405, origin);
+      }
+
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      if (await isRateLimited(env, ip)) {
+        const res = fail("요청이 너무 많습니다. 1분 뒤에 다시 시도해 주세요.", 429, origin);
+        res.headers.set("Retry-After", "60");
+        return res;
+      }
+
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return fail("요청 형식이 올바르지 않습니다.", 400, origin);
+      }
+
+      const paymentKey = typeof body?.paymentKey === "string" ? body.paymentKey.trim() : "";
+      const orderId = typeof body?.orderId === "string" ? body.orderId.trim() : "";
+      const amount = Number(body?.amount);
+      const email = typeof body?.email === "string" ? body.email.trim() : "";
+      const input = typeof body?.input === "string" ? body.input.trim() : "";
+      const job = typeof body?.job === "string" ? body.job.trim() : "";
+
+      if (!paymentKey || !orderId || !amount) {
+        return fail("결제 정보가 올바르지 않습니다.", 400, origin);
+      }
+
+      // 금액은 서버에 고정된 값과 반드시 같아야 합니다.
+      if (amount !== PRICE) {
+        console.error("amount mismatch order=" + orderId + " amount=" + amount);
+        return fail("결제 금액이 올바르지 않습니다.", 400, origin);
+      }
+
+      const stub = orderStub(env, orderId);
+
+      // 이미 처리된 주문이면 그대로 돌려줍니다. (새로고침 대응)
+      const existingRes = await stub.fetch("https://order.local/get");
+      const existing = await existingRes.json();
+      if (existing.status === "done" || existing.status === "error") {
+        return json(
+          {
+            ok: true,
+            status: existing.status,
+            result: existing.result || null,
+            error: existing.error || "",
+          },
+          200,
+          origin
+        );
+      }
+      if (existing.status === "generating") {
+        return json({ ok: true, status: "generating" }, 200, origin);
+      }
+
+      // 자소서가 없으면 리포트를 만들 수 없습니다.
+      if (input.length < MIN_TEXT_CHARS) {
+        return fail(
+          "자소서 내용을 찾지 못했습니다. 첫 화면에서 자소서를 입력한 뒤 다시 결제해 주세요.",
+          400,
+          origin
+        );
+      }
+
+      // 토스페이먼츠에 승인 요청
+      let payment;
+      try {
+        payment = await confirmPayment(env, { paymentKey, orderId, amount });
+      } catch (err) {
+        if (err?.noKey) {
+          return fail("결제 설정이 완료되지 않았습니다. 잠시 뒤에 다시 시도해 주세요.", 503, origin);
+        }
+        return fail("결제 승인에 실패했습니다. 결제가 되었다면 자동으로 취소됩니다.", 402, origin);
+      }
+
+      // 토스가 알려준 실제 결제 금액도 다시 확인합니다.
+      if (Number(payment?.totalAmount) !== PRICE) {
+        console.error("confirmed amount mismatch order=" + orderId);
+        return fail("결제 금액이 올바르지 않습니다.", 400, origin);
+      }
+
+      // 자리를 잡고 리포트 생성을 시작합니다.
+      const claimRes = await stub.fetch("https://order.local/claim", {
+        method: "POST",
+        body: JSON.stringify({ email, paymentKey, amount }),
+      });
+      const claim = await claimRes.json();
+
+      if (claim.claimed) {
+        // 응답을 먼저 보내고, 리포트는 뒤에서 계속 만듭니다.
+        ctx.waitUntil(generateAndStore(env, orderId, { input, job }));
+      }
+
+      return json({ ok: true, status: "generating" }, 200, origin);
     }
 
     // 3) 경로 확인
@@ -459,8 +739,8 @@ export default {
     const text = rawText.trim();
     const job = typeof payload?.job === "string" ? payload.job.trim() : "";
 
-    if (text.length < 30) {
-      return fail("자소서 내용을 30자 이상 입력해 주세요.", 400, origin);
+    if (text.length < MIN_TEXT_CHARS) {
+      return fail(`자소서 내용을 ${MIN_TEXT_CHARS}자 이상 입력해 주세요.`, 400, origin);
     }
 
     // 7) Claude 호출
