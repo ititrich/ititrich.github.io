@@ -179,47 +179,123 @@
     white-space: normal;
   }
 
-  /* 점수 막대 */
+  /* ===== 로딩 (스피너) ===== */
+  .loading{
+    display:flex; align-items:center; gap:12px;
+    justify-content:center; padding: 8px 0;
+  }
+  .spinner{
+    width:22px; height:22px; flex:0 0 auto;
+    border:3px solid var(--line);
+    border-top-color: var(--point);
+    border-radius:50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  .loading span{ font-size:15px; font-weight:700; color: var(--point-dark); }
+  @media (prefers-reduced-motion: reduce){
+    .spinner{ animation-duration: 2.4s; }
+  }
+
+  /* ===== 점수 막대 그래프 ===== */
   .score-row{
     display:flex; align-items:center; gap:10px;
-    margin-top: 10px;
+    margin-top: 12px;
+  }
+  /* HEX 색으로 칠한 동그라미 칩 */
+  .chip-dot{
+    flex:0 0 auto;
+    width:10px; height:10px; border-radius:50%;
   }
   .score-name{
-    flex: 0 0 62px; font-size:13px; font-weight:700; color: var(--text-sub);
+    flex: 0 0 56px; font-size:13px; font-weight:700; color: var(--text-sub);
   }
   .score-bar{
-    flex:1; height:8px; border-radius:999px; background: var(--line);
+    flex:1; height:10px; border-radius:999px; background: var(--line);
     overflow:hidden;
   }
   .score-bar i{
-    display:block; height:100%; background: var(--point); border-radius:999px;
+    display:block; height:100%; border-radius:999px;
+    transition: width .6s ease;
   }
   .score-num{
-    flex:0 0 42px; text-align:right;
+    flex:0 0 44px; text-align:right;
     font-size:14px; font-weight:800;
   }
   .score-why{
     font-size:13px; color: var(--text-sub); line-height:1.6;
-    margin: 4px 0 0 72px;
+    margin: 5px 0 0 76px;
   }
+
   .r-head{
     font-size:13px; font-weight:800; color: var(--point-dark);
-    margin: 22px 0 6px;
+    margin: 24px 0 8px;
   }
   .r-head:first-child{ margin-top:0; }
   .r-summary{ font-size:15px; }
+
+  /* ===== 수정 전/후 두 칸 비교 카드 ===== */
   .fix{
     border:1px solid var(--line); border-radius:12px;
-    padding:14px; margin-top:10px;
+    margin-top:12px; overflow:hidden;
   }
-  .fix .tag{ font-size:11px; font-weight:800; color: var(--text-sub); }
-  .fix .tag.after{ color: var(--point-dark); }
-  .fix p{ font-size:14px; margin:3px 0 10px; }
-  .fix p:last-child{ margin-bottom:0; }
-  .fix .why{ font-size:13px; color: var(--text-sub); }
+  .fix-grid{
+    display:grid;
+    grid-template-columns: 1fr;   /* 좁은 화면은 위아래로 */
+  }
+  .fix-col{ padding:13px 14px; }
+  .fix-col + .fix-col{ border-top:1px solid var(--line); }
+  .fix-col.before{ background:#FAFAFB; }
+  .fix-col.after{ background:#fff; }
+  .fix-col .tag{
+    display:block;
+    font-size:11px; font-weight:800; letter-spacing:.02em;
+    margin-bottom:5px;
+  }
+  .fix-col.before .tag{ color:#9AA0AC; }
+  .fix-col.after .tag{ color: var(--point-dark); }
+  .fix-col p{ font-size:14px; line-height:1.65; }
+  .fix-why{
+    padding:11px 14px;
+    border-top:1px solid var(--line);
+    background:#fff;
+    font-size:13px; color: var(--text-sub); line-height:1.6;
+  }
+  @media (min-width: 420px){
+    .fix-grid{ grid-template-columns: 1fr 1fr; }
+    .fix-col + .fix-col{ border-top:0; border-left:1px solid var(--line); }
+  }
+
   .r-next{
-    margin-top:18px; padding-top:14px; border-top:1px solid var(--line);
+    margin-top:20px; padding-top:15px; border-top:1px solid var(--line);
     font-size:14px; font-weight:700; color: var(--point-dark);
+  }
+
+  /* ===== 결과 아래 버튼들 ===== */
+  .r-actions{ margin-top:18px; }
+  .r-actions .btn{ font-size:16px; padding:17px 20px; }
+  .btn-print{
+    background:#fff; color: var(--text-sub);
+    border:1.5px solid var(--line);
+    box-shadow:none;
+    font-size:14px; font-weight:700;
+    padding:13px 20px;
+    margin-top:8px;
+  }
+  .btn-print:hover{ background: var(--bg-soft); color: var(--text); }
+
+  /* ===== 인쇄(PDF 저장) 시에는 결과 영역만 ===== */
+  @media print{
+    body *{ visibility: hidden; }
+    #free-result, #free-result *{ visibility: visible; }
+    #free-result{
+      position:absolute; left:0; top:0;
+      width:100%; margin:0; padding:0;
+      border:0; background:#fff;
+    }
+    #free-result .r-actions{ display:none; }
+    .score-bar{ border:1px solid #ddd; }
+    .fix, .fix-col, .fix-why{ break-inside: avoid; }
   }
   .btn:disabled{
     opacity: .55;
@@ -663,6 +739,31 @@ function el(tag, className, text) {
   return node;
 }
 
+// 점수대별 색상 (HEX)
+const SCORE_COLORS = [
+  { min: 70, hex: "#2F6BFF" }, // 높음 - 파랑
+  { min: 40, hex: "#F5A524" }, // 보통 - 주황
+  { min: 0,  hex: "#E5484D" }, // 낮음 - 빨강
+];
+
+function scoreColor(value) {
+  for (const step of SCORE_COLORS) {
+    if (value >= step.min) return step.hex;
+  }
+  return SCORE_COLORS[SCORE_COLORS.length - 1].hex;
+}
+
+// 로딩 화면 (스피너 + 문구)
+function showLoading() {
+  freeResult.className = "result warn";
+  freeResult.textContent = "";
+
+  const box = el("div", "loading");
+  box.appendChild(el("div", "spinner"));
+  box.appendChild(el("span", null, "분석 중입니다 (약 20초)"));
+  freeResult.appendChild(box);
+}
+
 // 서버가 보내준 진단 결과(JSON)를 화면에 그립니다.
 function renderResult(data) {
   freeResult.className = "result done";
@@ -675,19 +776,29 @@ function renderResult(data) {
   if (names.length) {
     freeResult.appendChild(el("div", "r-head", "진단 점수"));
     names.forEach(function (name) {
-      const value = Number(scores[name]) || 0;
+      const value = Math.max(0, Math.min(100, Number(scores[name]) || 0));
+      const hex = scoreColor(value);
 
       const row = el("div", "score-row");
+
+      // HEX 색으로 칠한 동그라미 칩
+      const dot = el("span", "chip-dot");
+      dot.style.backgroundColor = hex;
+      row.appendChild(dot);
+
       row.appendChild(el("span", "score-name", name));
 
       const bar = el("div", "score-bar");
-      const fillWidth = Math.max(0, Math.min(100, value));
       const fill = el("i");
-      fill.style.width = fillWidth + "%";
+      fill.style.width = value + "%";
+      fill.style.backgroundColor = hex;
       bar.appendChild(fill);
       row.appendChild(bar);
 
-      row.appendChild(el("span", "score-num", value + "점"));
+      const num = el("span", "score-num", value + "점");
+      num.style.color = hex;
+      row.appendChild(num);
+
       freeResult.appendChild(row);
 
       if (reasons[name]) {
@@ -706,11 +817,22 @@ function renderResult(data) {
     freeResult.appendChild(el("div", "r-head", "이렇게 고치세요"));
     fixes.forEach(function (fix) {
       const card = el("div", "fix");
-      card.appendChild(el("span", "tag", "원문"));
-      card.appendChild(el("p", null, fix.before || ""));
-      card.appendChild(el("span", "tag after", "수정안"));
-      card.appendChild(el("p", null, fix.after || ""));
-      if (fix.why) card.appendChild(el("p", "why", fix.why));
+      const grid = el("div", "fix-grid");
+
+      // 왼쪽 칸: 수정 전
+      const before = el("div", "fix-col before");
+      before.appendChild(el("span", "tag", "수정 전"));
+      before.appendChild(el("p", null, fix.before || ""));
+      grid.appendChild(before);
+
+      // 오른쪽 칸: 수정 후
+      const after = el("div", "fix-col after");
+      after.appendChild(el("span", "tag", "수정 후"));
+      after.appendChild(el("p", null, fix.after || ""));
+      grid.appendChild(after);
+
+      card.appendChild(grid);
+      if (fix.why) card.appendChild(el("div", "fix-why", fix.why));
       freeResult.appendChild(card);
     });
   }
@@ -718,6 +840,24 @@ function renderResult(data) {
   if (data.next) {
     freeResult.appendChild(el("div", "r-next", data.next));
   }
+
+  // 결과 아래 버튼 2개
+  const actions = el("div", "r-actions");
+
+  const payBtn = el("button", "btn", "상세 리포트 받기 29,000원");
+  payBtn.id = "pay";
+  payBtn.addEventListener("click", function () {
+    showToast("준비 중입니다");
+  });
+  actions.appendChild(payBtn);
+
+  const printBtn = el("button", "btn btn-print", "이 결과를 PDF로 저장");
+  printBtn.addEventListener("click", function () {
+    window.print();
+  });
+  actions.appendChild(printBtn);
+
+  freeResult.appendChild(actions);
 }
 
 freeBtn.addEventListener("click", async function () {
@@ -737,8 +877,8 @@ freeBtn.addEventListener("click", async function () {
   // 요청 중: 버튼을 잠그고 진행 상황을 알려줍니다.
   const label = freeBtn.textContent;
   freeBtn.disabled = true;
-  freeBtn.textContent = "진단 중입니다...";
-  setResult("자소서를 읽고 있습니다. 20초 정도 걸립니다.", "warn");
+  freeBtn.textContent = "분석 중입니다...";
+  showLoading();
 
   try {
     const res = await fetch(CONFIG.API_URL + "/free", {
