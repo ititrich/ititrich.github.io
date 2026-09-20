@@ -503,8 +503,8 @@ async function generateAndStore(env, orderId, { input, job }) {
     const result = await callClaude(env, {
       mode: "paid",
       userText,
-      maxTokens: ROUTES["/report"].maxTokens,
-      effort: ROUTES["/report"].effort,
+      maxTokens: PAID_SETTINGS.maxTokens,
+      effort: PAID_SETTINGS.effort,
       schema: SCHEMA_PAID,
     });
 
@@ -526,18 +526,20 @@ async function generateAndStore(env, orderId, { input, job }) {
 
 /* ---------- 요청 처리 ---------- */
 
+/* 유료 리포트 설정.
+   이 경로는 밖으로 열어두지 않습니다. 결제가 승인된 주문에 대해서만
+   /confirm 안에서 생성됩니다. */
+const PAID_SETTINGS = {
+  maxTokens: 48000,
+  effort: "high",
+};
+
 const ROUTES = {
   "/free": {
     mode: "free",
     schema: SCHEMA_FREE,
     maxTokens: 4000,
     effort: "low", // 간이진단은 가볍고 빠르게
-  },
-  "/report": {
-    mode: "paid",
-    schema: SCHEMA_PAID,
-    maxTokens: 48000, // A4 8~12장 분량을 담을 수 있는 크기
-    effort: "high", // 상세 리포트는 충분히 깊게
   },
 };
 
