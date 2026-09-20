@@ -2,14 +2,14 @@
    AI 자소서 첨삭 리포트 - API 서버 (Cloudflare Workers)
 
    경로
-     POST /free    무료 간이진단
-     POST /report  유료 상세 리포트
+     POST /free    무료 간이진단   (mode: "free")
+     POST /report  유료 상세 리포트 (mode: "paid")
 
    요청 본문(JSON)
      { "text": "자소서 내용", "job": "백엔드 개발" }   // job 은 선택
 
    응답(JSON)
-     성공: { "ok": true,  "result": "결과 텍스트" }
+     성공: { "ok": true,  "result": { ...아래 [출력 형식] 구조... } }
      실패: { "ok": false, "error": "짧은 안내 문구" }
    ============================================================ */
 
@@ -39,58 +39,117 @@ const ANTHROPIC_VERSION = "2023-06-01";
 // 모델이 요청을 거절했을 때 서버가 알아서 다른 모델로 재시도하게 해주는 옵션
 const ANTHROPIC_BETA = "server-side-fallback-2026-07-01";
 
-/* ---------- 프롬프트 ---------- */
+/* ============================================================
+   SYSTEM_PROMPT
+   ============================================================ */
 
-const SYSTEM_FREE = `너는 IT 취업 자소서를 첨삭하는 8년차 현업 개발자다.
-사용자가 보낸 자소서 일부를 읽고 "무료 간이진단"을 한국어로 작성한다.
+const SYSTEM_PROMPT = `당신은 IT 기업 채용 담당자 출신 자소서 첨삭 전문가입니다.
+서류 3만 건을 검토한 경험으로 평가합니다.
 
-형식을 정확히 지켜라.
+[평가 기준] 각 100점
+1 구체성 - 숫자·기간·역할이 드러나는가
+2 직무적합 - 지원 직무 키워드와 맞는가
+3 논리 - 질문에 실제로 답하고 있는가
+4 가독성 - 첫 두 문장에서 읽히는가
 
-[진단 요약]
-한 문장으로 현재 상태를 평가한다.
+[반드시 할 것]
+· 점수마다 근거 한 줄을 붙일 것 (score_reasons 에 기록)
+· 문장 단위로 "원문 → 수정안 → 이유" (fixes 의 before/after/why)
+· 수정안은 지원자가 쓴 사실만 재배열
 
-[가장 약한 점 3가지]
-1. (문제) - (왜 문제인지 한 줄)
-2. ...
-3. ...
+[절대 금지]
+· 없는 경험·수치를 지어내지 말 것
+· "좋습니다" 같은 뭉뚱그린 칭찬 금지
+· 합격을 보장하는 표현 금지
 
-[한 문장만 고쳐본 예시]
-원문: (사용자 문장 중 하나를 그대로 인용)
-수정: (고친 문장)
+[무료 모드일 때 (mode: "free")]
+· 점수 3개(구체성·직무적합·논리) + 가장 치명적인 문제 1개만
+· 수정안은 한 문장만 예시로 (fixes 는 1개)
+· keywords 와 questions 는 비워 둘 것
+· next 에 "나머지 문항 첨삭과 면접질문은 상세 리포트에서 드립니다" 한 줄
 
-규칙
-- 전체 500자 이내로 짧게 쓴다.
-- 전체 문장을 다 고쳐주지 않는다. 맛보기 수준까지만 한다.
-- 칭찬만 하지 말고 고칠 점을 구체적으로 짚는다.
-- 마크다운 기호(#, *, -)는 쓰지 않는다. 대괄호 제목과 줄바꿈만 쓴다.`;
+[유료 모드일 때 (mode: "paid")]
+· 점수 4개 전부
+· 전 문항 첨삭 (문장 단위 수정안). fixes 를 충분히 많이 채울 것
+· fixes 의 before/after 가 곧 첨삭 전/후 비교본이 된다
+· 직무 키워드 매칭표 (keywords 의 "있음" / "없음")
+· 예상 면접질문 10개 + 답변 뼈대 (questions 에 10개)
+· 전체 분량은 A4 기준 8~12장에 해당하는 양으로 작성할 것
+· next 는 빈 문자열
 
-const SYSTEM_REPORT = `너는 IT 취업 자소서를 첨삭하는 8년차 현업 개발자다.
-사용자가 보낸 자소서 전체를 읽고 "유료 상세 리포트"를 한국어로 작성한다.
+[출력 형식]
+JSON만 출력. 앞뒤 설명 문장 금지.`;
 
-아래 4개 항목을 순서대로, 빠짐없이 작성한다.
+/* ---------- 출력 형식(스키마) ---------- */
 
-[1. 전체 문항 첨삭]
-문항별로 무엇이 문제이고 어떻게 고쳐야 하는지 구체적으로 쓴다.
+const FIX_ITEM = {
+  type: "object",
+  additionalProperties: false,
+  required: ["before", "after", "why"],
+  properties: {
+    before: { type: "string" },
+    after: { type: "string" },
+    why: { type: "string" },
+  },
+};
 
-[2. 첨삭 전후 비교]
-중요한 문장 5개 이상을 골라 아래 형식으로 쓴다.
-원문: (그대로 인용)
-수정: (고친 문장)
-이유: (한 줄)
+const QUESTION_ITEM = {
+  type: "object",
+  additionalProperties: false,
+  required: ["질문", "답변뼈대"],
+  properties: {
+    질문: { type: "string" },
+    답변뼈대: { type: "string" },
+  },
+};
 
-[3. 직무 키워드 리포트]
-지원 직무 기준으로 자소서에 들어갔어야 하는데 빠진 키워드를 5개 이상 뽑고,
-각각 어느 문단에 어떻게 넣으면 되는지 한 줄씩 붙인다.
+const KEYWORDS = {
+  type: "object",
+  additionalProperties: false,
+  required: ["있음", "없음"],
+  properties: {
+    있음: { type: "array", items: { type: "string" } },
+    없음: { type: "array", items: { type: "string" } },
+  },
+};
 
-[4. 예상 면접질문 10개]
-이 자소서를 읽은 면접관이 실제로 던질 질문 10개를 번호를 붙여 쓴다.
-막연한 질문 말고, 자소서에 적힌 내용을 근거로 파고드는 질문으로 쓴다.
+function buildSchema(scoreKeys) {
+  const scoreProps = {};
+  const reasonProps = {};
+  for (const key of scoreKeys) {
+    scoreProps[key] = { type: "integer" };
+    reasonProps[key] = { type: "string" };
+  }
 
-규칙
-- 추상적인 조언("구체적으로 쓰세요") 금지. 실제 고친 문장을 보여준다.
-- 사용자가 쓰지 않은 경력이나 수치를 지어내지 않는다.
-  숫자가 필요한 자리는 (숫자 기입) 처럼 빈칸으로 남긴다.
-- 마크다운 기호(#, *, -)는 쓰지 않는다. 대괄호 제목과 줄바꿈만 쓴다.`;
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["scores", "score_reasons", "summary", "fixes", "keywords", "questions", "next"],
+    properties: {
+      scores: {
+        type: "object",
+        additionalProperties: false,
+        required: scoreKeys,
+        properties: scoreProps,
+      },
+      // 점수마다 근거 한 줄
+      score_reasons: {
+        type: "object",
+        additionalProperties: false,
+        required: scoreKeys,
+        properties: reasonProps,
+      },
+      summary: { type: "string" },
+      fixes: { type: "array", items: FIX_ITEM },
+      keywords: KEYWORDS,
+      questions: { type: "array", items: QUESTION_ITEM },
+      next: { type: "string" },
+    },
+  };
+}
+
+const SCHEMA_FREE = buildSchema(["구체성", "직무적합", "논리"]);
+const SCHEMA_PAID = buildSchema(["구체성", "직무적합", "논리", "가독성"]);
 
 /* ---------- IP 제한 ---------- */
 
@@ -170,31 +229,78 @@ function fail(message, status, origin) {
 
 /* ---------- Claude 호출 ---------- */
 
-async function callClaude(env, { system, userText, maxTokens, effort }) {
+// 응답이 길어도 연결이 끊기지 않도록 스트리밍으로 받아서 서버에서 합칩니다.
+async function readStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+
+  let buffer = "";
+  let text = "";
+  let stopReason = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+
+      let event;
+      try {
+        event = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+
+      if (
+        event.type === "content_block_delta" &&
+        event.delta &&
+        event.delta.type === "text_delta"
+      ) {
+        text += event.delta.text;
+      } else if (event.type === "message_delta" && event.delta) {
+        stopReason = event.delta.stop_reason || stopReason;
+      } else if (event.type === "error") {
+        console.error("stream error", JSON.stringify(event.error || {}));
+        throw new Error("stream");
+      }
+    }
+  }
+
+  return { text, stopReason };
+}
+
+async function callClaude(env, { mode, userText, maxTokens, effort, schema }) {
   // 키를 등록할 때 줄바꿈이나 공백이 섞여 들어가는 경우가 있어 정리합니다.
   const apiKey = String(env.ANTHROPIC_API_KEY || "").trim();
-  if (apiKey.length !== String(env.ANTHROPIC_API_KEY || "").length) {
-    console.error("apiKey had surrounding whitespace (trimmed)");
-  }
 
   const body = {
     model: MODEL,
     max_tokens: maxTokens,
-    system,
+    system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userText }],
+    stream: true,
     fallbacks: "default",
+    output_config: {
+      effort,
+      format: { type: "json_schema", schema },
+    },
   };
-  if (effort) body.output_config = { effort };
 
   const res = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,   // 키는 절대 코드에 쓰지 않습니다
+      "x-api-key": apiKey, // 키는 절대 코드에 쓰지 않습니다
       "anthropic-version": ANTHROPIC_VERSION,
       "anthropic-beta": ANTHROPIC_BETA,
       // 워크스페이스에 소속되지 않은 키를 쓰는 경우에만 필요합니다.
-      // (ANTHROPIC_WORKSPACE_ID 를 등록하지 않았으면 이 줄은 무시됩니다)
       ...(env.ANTHROPIC_WORKSPACE_ID
         ? { "anthropic-workspace-id": String(env.ANTHROPIC_WORKSPACE_ID).trim() }
         : {}),
@@ -208,58 +314,82 @@ async function callClaude(env, { system, userText, maxTokens, effort }) {
     try {
       detail = await res.text();
     } catch (e) {
-      detail = "(본문 읽기 실패: " + e.message + ")";
+      detail = "(본문 읽기 실패)";
     }
-    console.error(
-      "anthropic error status=" + res.status + " body=" + detail.slice(0, 800)
-    );
+    console.error("anthropic error status=" + res.status + " body=" + detail.slice(0, 800));
     const error = new Error("upstream");
     error.upstreamStatus = res.status;
     throw error;
   }
 
-  const data = await res.json();
+  const { text, stopReason } = await readStream(res);
 
   // 모델이 요청을 거절한 경우
-  if (data.stop_reason === "refusal") {
-    console.error("refusal", JSON.stringify(data.stop_details || {}));
+  if (stopReason === "refusal") {
+    console.error("refusal mode=" + mode);
     const error = new Error("refusal");
     error.refusal = true;
     throw error;
   }
 
-  // 응답에서 텍스트 블록만 뽑습니다.
-  const text = (data.content || [])
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-
-  if (!text) {
-    console.error("empty content", JSON.stringify(data).slice(0, 500));
-    throw new Error("empty");
+  // 분량 한도에 걸려 중간에 잘린 경우 (JSON 이 깨집니다)
+  if (stopReason === "max_tokens") {
+    console.error("truncated mode=" + mode + " len=" + text.length);
+    const error = new Error("truncated");
+    error.truncated = true;
+    throw error;
   }
 
-  return text;
+  const parsed = parseJson(text);
+  if (!parsed) {
+    console.error("json parse failed mode=" + mode + " head=" + text.slice(0, 300));
+    throw new Error("badjson");
+  }
+
+  return parsed;
+}
+
+// 혹시 앞뒤에 설명 문장이 붙어 나와도 JSON 부분만 뽑아냅니다.
+function parseJson(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // 계속 진행
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  try {
+    return JSON.parse(trimmed.slice(start, end + 1));
+  } catch {
+    return null;
+  }
 }
 
 /* ---------- 요청 처리 ---------- */
 
 const ROUTES = {
   "/free": {
-    system: SYSTEM_FREE,
+    mode: "free",
+    schema: SCHEMA_FREE,
     maxTokens: 4000,
-    effort: "low",          // 간이진단은 가볍고 빠르게
+    effort: "low", // 간이진단은 가볍고 빠르게
   },
   "/report": {
-    system: SYSTEM_REPORT,
-    maxTokens: 16000,
-    effort: "high",         // 상세 리포트는 충분히 깊게
+    mode: "paid",
+    schema: SCHEMA_PAID,
+    maxTokens: 48000, // A4 8~12장 분량을 담을 수 있는 크기
+    effort: "high", // 상세 리포트는 충분히 깊게
   },
 };
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const origin = request.headers.get("Origin");
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
@@ -324,16 +454,18 @@ export default {
     }
 
     // 7) Claude 호출
-    const userText = job
-      ? `지원 직무: ${job}\n\n--- 자소서 ---\n${text}`
-      : `지원 직무: (미입력 - IT 개발 직무 기준으로 판단할 것)\n\n--- 자소서 ---\n${text}`;
+    const userText =
+      `mode: "${route.mode}"\n` +
+      `지원 직무: ${job || "(미입력 - IT 개발 직무 기준으로 판단할 것)"}\n\n` +
+      `--- 자소서 ---\n${text}`;
 
     try {
       const result = await callClaude(env, {
-        system: route.system,
+        mode: route.mode,
         userText,
         maxTokens: route.maxTokens,
         effort: route.effort,
+        schema: route.schema,
       });
       return json({ ok: true, result }, 200, origin);
     } catch (err) {
@@ -342,6 +474,9 @@ export default {
 
       if (err?.refusal) {
         return fail("이 내용은 처리할 수 없습니다. 자소서 본문만 입력해 주세요.", 422, origin);
+      }
+      if (err?.truncated) {
+        return fail("자소서가 너무 길어 리포트를 완성하지 못했습니다. 조금 줄여서 다시 시도해 주세요.", 422, origin);
       }
       if (err?.upstreamStatus === 429) {
         return fail("지금 이용자가 많습니다. 잠시 뒤에 다시 시도해 주세요.", 503, origin);

@@ -176,6 +176,50 @@
     background: #fff;
     color: var(--text);
     line-height: 1.75;
+    white-space: normal;
+  }
+
+  /* 점수 막대 */
+  .score-row{
+    display:flex; align-items:center; gap:10px;
+    margin-top: 10px;
+  }
+  .score-name{
+    flex: 0 0 62px; font-size:13px; font-weight:700; color: var(--text-sub);
+  }
+  .score-bar{
+    flex:1; height:8px; border-radius:999px; background: var(--line);
+    overflow:hidden;
+  }
+  .score-bar i{
+    display:block; height:100%; background: var(--point); border-radius:999px;
+  }
+  .score-num{
+    flex:0 0 42px; text-align:right;
+    font-size:14px; font-weight:800;
+  }
+  .score-why{
+    font-size:13px; color: var(--text-sub); line-height:1.6;
+    margin: 4px 0 0 72px;
+  }
+  .r-head{
+    font-size:13px; font-weight:800; color: var(--point-dark);
+    margin: 22px 0 6px;
+  }
+  .r-head:first-child{ margin-top:0; }
+  .r-summary{ font-size:15px; }
+  .fix{
+    border:1px solid var(--line); border-radius:12px;
+    padding:14px; margin-top:10px;
+  }
+  .fix .tag{ font-size:11px; font-weight:800; color: var(--text-sub); }
+  .fix .tag.after{ color: var(--point-dark); }
+  .fix p{ font-size:14px; margin:3px 0 10px; }
+  .fix p:last-child{ margin-bottom:0; }
+  .fix .why{ font-size:13px; color: var(--text-sub); }
+  .r-next{
+    margin-top:18px; padding-top:14px; border-top:1px solid var(--line);
+    font-size:14px; font-weight:700; color: var(--point-dark);
   }
   .btn:disabled{
     opacity: .55;
@@ -605,11 +649,75 @@ freeInput.addEventListener("input", function () {
   countEl.textContent = freeInput.value.length.toLocaleString();
 });
 
-// 결과 영역에 메시지를 그리는 함수
-// state: "warn" = 안내/오류,  "done" = 실제 진단 결과
+// 안내/오류 메시지를 그리는 함수
 function setResult(message, state) {
   freeResult.className = state ? "result " + state : "result";
   freeResult.textContent = message;
+}
+
+// 글자를 그대로 넣어주는 도우미 (HTML 태그로 해석되지 않게 막아줍니다)
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// 서버가 보내준 진단 결과(JSON)를 화면에 그립니다.
+function renderResult(data) {
+  freeResult.className = "result done";
+  freeResult.textContent = "";
+
+  const scores = data.scores || {};
+  const reasons = data.score_reasons || {};
+  const names = Object.keys(scores);
+
+  if (names.length) {
+    freeResult.appendChild(el("div", "r-head", "진단 점수"));
+    names.forEach(function (name) {
+      const value = Number(scores[name]) || 0;
+
+      const row = el("div", "score-row");
+      row.appendChild(el("span", "score-name", name));
+
+      const bar = el("div", "score-bar");
+      const fillWidth = Math.max(0, Math.min(100, value));
+      const fill = el("i");
+      fill.style.width = fillWidth + "%";
+      bar.appendChild(fill);
+      row.appendChild(bar);
+
+      row.appendChild(el("span", "score-num", value + "점"));
+      freeResult.appendChild(row);
+
+      if (reasons[name]) {
+        freeResult.appendChild(el("p", "score-why", reasons[name]));
+      }
+    });
+  }
+
+  if (data.summary) {
+    freeResult.appendChild(el("div", "r-head", "총평"));
+    freeResult.appendChild(el("p", "r-summary", data.summary));
+  }
+
+  const fixes = Array.isArray(data.fixes) ? data.fixes : [];
+  if (fixes.length) {
+    freeResult.appendChild(el("div", "r-head", "이렇게 고치세요"));
+    fixes.forEach(function (fix) {
+      const card = el("div", "fix");
+      card.appendChild(el("span", "tag", "원문"));
+      card.appendChild(el("p", null, fix.before || ""));
+      card.appendChild(el("span", "tag after", "수정안"));
+      card.appendChild(el("p", null, fix.after || ""));
+      if (fix.why) card.appendChild(el("p", "why", fix.why));
+      freeResult.appendChild(card);
+    });
+  }
+
+  if (data.next) {
+    freeResult.appendChild(el("div", "r-next", data.next));
+  }
 }
 
 freeBtn.addEventListener("click", async function () {
@@ -649,7 +757,7 @@ freeBtn.addEventListener("click", async function () {
       return;
     }
 
-    setResult(data.result, "done");
+    renderResult(data.result);
   } catch (err) {
     setResult("연결에 실패했습니다. 잠시 뒤에 다시 시도해 주세요.", "warn");
   } finally {
