@@ -449,7 +449,14 @@ export default {
       return fail("요청 형식이 올바르지 않습니다.", 400, origin);
     }
 
-    const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+    // 자소서 본문은 input 또는 text 어느 이름으로 보내도 받습니다.
+    const rawText =
+      typeof payload?.input === "string"
+        ? payload.input
+        : typeof payload?.text === "string"
+        ? payload.text
+        : "";
+    const text = rawText.trim();
     const job = typeof payload?.job === "string" ? payload.job.trim() : "";
 
     if (text.length < 30) {

@@ -11,6 +11,9 @@
     --point: #2F6BFF;        /* 포인트 컬러 1개 */
     --point-dark: #1F4FD8;
     --point-soft: #EEF3FF;
+    --danger: #E5484D;
+    --danger-dark: #C1272D;
+    --danger-soft: #FEF1F1;
     --text: #17191C;
     --text-sub: #5B6270;
     --line: #E8EAEF;
@@ -161,7 +164,7 @@
     min-height: 64px;
     white-space: pre-wrap;   /* 줄바꿈 그대로 보이게 */
   }
-  /* 안내 / 오류 메시지 */
+  /* 안내 메시지 */
   .result.warn{
     border-style: solid;
     border-color: var(--point);
@@ -169,6 +172,23 @@
     color: var(--point-dark);
     font-weight: 700;
   }
+  /* 오류 메시지 (빨간색) */
+  .result.error{
+    border-style: solid;
+    border-color: var(--danger);
+    background: var(--danger-soft);
+    color: var(--danger-dark);
+    font-weight: 700;
+  }
+  .error-msg{ font-size:15px; line-height:1.6; }
+  .btn-retry{
+    background: var(--danger);
+    color:#fff;
+    font-size:15px;
+    padding:14px 20px;
+    margin-top:14px;
+  }
+  .btn-retry:hover{ background: var(--danger-dark); }
   /* 실제 진단 결과 */
   .result.done{
     border-style: solid;
@@ -694,7 +714,11 @@
 /* ============================================================
    설정 - API 주소는 나중에 채웁니다. (키/비밀값은 넣지 않습니다)
    ============================================================ */
-const CONFIG = { API_URL: "https://itresume-api.ititrich.workers.dev" };
+const CONFIG = {
+  API_URL: "https://itresume-api.ititrich.workers.dev",
+  TIMEOUT_MS: 20000,   // 이 시간을 넘기면 타임아웃 안내를 띄웁니다.
+  MIN_CHARS: 30,       // 이 글자 수보다 짧으면 서버를 부르지 않습니다.
+};
 
 /* ---- 공용: 토스트 ---- */
 let toastTimer = null;
@@ -725,10 +749,27 @@ freeInput.addEventListener("input", function () {
   countEl.textContent = freeInput.value.length.toLocaleString();
 });
 
-// 안내/오류 메시지를 그리는 함수
+// 안내 메시지를 그리는 함수
 function setResult(message, state) {
   freeResult.className = state ? "result " + state : "result";
   freeResult.textContent = message;
+}
+
+// 실패 안내(빨간색) + 다시 시도 버튼
+function showError(message) {
+  freeResult.className = "result error";
+  freeResult.textContent = "";
+
+  const msg = document.createElement("p");
+  msg.className = "error-msg";
+  msg.textContent = message;
+  freeResult.appendChild(msg);
+
+  const retry = document.createElement("button");
+  retry.className = "btn btn-retry";
+  retry.textContent = "다시 시도하기";
+  retry.addEventListener("click", runFreeDiagnosis);
+  freeResult.appendChild(retry);
 }
 
 // 글자를 그대로 넣어주는 도우미 (HTML 태그로 해석되지 않게 막아줍니다)
@@ -860,11 +901,22 @@ function renderResult(data) {
   freeResult.appendChild(actions);
 }
 
-freeBtn.addEventListener("click", async function () {
+const FREE_BTN_LABEL = freeBtn.textContent;
+
+async function runFreeDiagnosis() {
   const text = freeInput.value.trim();
 
-  if (text.length < 30) {
-    setResult("자소서 내용을 30자 이상 붙여넣어 주세요.", "warn");
+  // 1) 입력이 비어 있으면 서버를 부르지 않고 안내만 합니다.
+  if (!text) {
+    setResult("자소서 내용을 먼저 붙여넣어 주세요.", "warn");
+    freeInput.focus();
+    return;
+  }
+  if (text.length < CONFIG.MIN_CHARS) {
+    setResult(
+      "내용이 너무 짧습니다. " + CONFIG.MIN_CHARS + "자 이상 붙여넣어 주세요.",
+      "warn"
+    );
     freeInput.focus();
     return;
   }
@@ -874,37 +926,52 @@ freeBtn.addEventListener("click", async function () {
     return;
   }
 
-  // 요청 중: 버튼을 잠그고 진행 상황을 알려줍니다.
-  const label = freeBtn.textContent;
+  // 2) 요청 중: 버튼을 잠그고 진행 상황을 알려줍니다.
   freeBtn.disabled = true;
   freeBtn.textContent = "분석 중입니다...";
   showLoading();
+
+  // 3) 정해둔 시간이 지나면 요청을 끊습니다.
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(function () {
+    timedOut = true;
+    controller.abort();
+  }, CONFIG.TIMEOUT_MS);
 
   try {
     const res = await fetch(CONFIG.API_URL + "/free", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text }),
+      body: JSON.stringify({ mode: "free", input: text }),
+      signal: controller.signal,
     });
 
     const data = await res.json().catch(function () { return null; });
 
     if (!res.ok || !data || !data.ok) {
-      setResult(
-        (data && data.error) || "잠시 뒤에 다시 시도해 주세요.",
-        "warn"
-      );
+      showError((data && data.error) || "진단에 실패했습니다. 잠시 뒤에 다시 시도해 주세요.");
       return;
     }
 
     renderResult(data.result);
   } catch (err) {
-    setResult("연결에 실패했습니다. 잠시 뒤에 다시 시도해 주세요.", "warn");
+    if (timedOut) {
+      showError(
+        "응답이 " + Math.round(CONFIG.TIMEOUT_MS / 1000) +
+        "초를 넘겨 중단했습니다. 자소서를 조금 줄이거나 잠시 뒤에 다시 시도해 주세요."
+      );
+    } else {
+      showError("서버에 연결하지 못했습니다. 인터넷 상태를 확인한 뒤 다시 시도해 주세요.");
+    }
   } finally {
+    clearTimeout(timer);
     freeBtn.disabled = false;
-    freeBtn.textContent = label;
+    freeBtn.textContent = FREE_BTN_LABEL;
   }
-});
+}
+
+freeBtn.addEventListener("click", runFreeDiagnosis);
 
 /* ---- FAQ: 하나만 열리도록 ---- */
 const faqItems = document.querySelectorAll("details");
